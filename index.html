@@ -2,10 +2,10 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>C.D.O.C. - HACKER TERMINAL</title>
     <style>
         :root {
-            /* Paleta Roxa Hacker */
             --hacker-purple: #bc13fe;
             --hacker-glow: #9d00ff;
             --hacker-cyan: #00f2ff;
@@ -16,6 +16,8 @@
             --glow-filter: drop-shadow(0 0 8px var(--hacker-glow));
         }
 
+        * { box-sizing: border-box; }
+
         body {
             background-color: var(--hacker-bg);
             color: var(--hacker-text);
@@ -25,10 +27,10 @@
             align-items: center;
             min-height: 100vh;
             margin: 0;
-            overflow: hidden;
+            padding: 20px;
+            overflow-x: hidden;
         }
 
-        /* Scanlines mais sutis e azuladas */
         body::after {
             content: "";
             position: fixed;
@@ -41,7 +43,8 @@
         .container {
             background: var(--hacker-card);
             border: 1px solid var(--hacker-border);
-            width: 550px;
+            width: 100%;
+            max-width: 550px;
             position: relative;
             padding: 2px;
             clip-path: polygon(0 0, 93% 0, 100% 7%, 100% 100%, 7% 100%, 0 93%);
@@ -50,12 +53,12 @@
 
         .header {
             background: #1a0033;
-            padding: 12px 20px;
+            padding: 10px 15px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 11px;
-            letter-spacing: 3px;
+            font-size: clamp(9px, 2.5vw, 11px);
+            letter-spacing: 2px;
             border-bottom: 1px solid var(--hacker-purple);
             color: var(--hacker-cyan);
             text-shadow: 0 0 5px var(--hacker-cyan);
@@ -73,7 +76,7 @@
         }
 
         .content { 
-            padding: 40px; 
+            padding: clamp(20px, 5vw, 40px); 
             background: radial-gradient(circle at center, #110022 0%, #030005 100%);
         }
 
@@ -81,20 +84,20 @@
             display: grid;
             grid-template-columns: 1fr;
             gap: 12px;
-            margin-bottom: 35px;
+            margin-bottom: 30px;
         }
 
         .btn-main {
             background: transparent;
             border: 1px solid var(--hacker-purple);
             color: var(--hacker-purple);
-            padding: 18px;
+            padding: 15px;
             cursor: pointer;
             font-family: inherit;
             font-weight: bold;
-            font-size: 16px;
+            font-size: clamp(14px, 4vw, 16px);
             text-transform: uppercase;
-            letter-spacing: 4px;
+            letter-spacing: 3px;
             transition: 0.3s;
             position: relative;
             overflow: hidden;
@@ -112,7 +115,7 @@
             color: var(--hacker-cyan);
             padding: 10px;
             cursor: pointer;
-            font-size: 10px;
+            font-size: clamp(9px, 2.5vw, 10px);
             text-transform: uppercase;
             letter-spacing: 2px;
             transition: 0.2s;
@@ -125,15 +128,16 @@
 
         .ficha {
             border-left: 3px solid var(--hacker-purple);
-            padding: 25px;
+            padding: 20px;
             background: rgba(45, 0, 77, 0.1);
             position: relative;
             min-height: 180px;
+            word-wrap: break-word;
         }
 
         .label {
             color: var(--hacker-cyan);
-            font-size: 10px;
+            font-size: clamp(8px, 2.2vw, 10px);
             text-transform: uppercase;
             margin-bottom: 8px;
             letter-spacing: 2px;
@@ -141,8 +145,8 @@
         }
 
         .valor {
-            font-size: 22px;
-            margin-bottom: 22px;
+            font-size: clamp(18px, 5vw, 22px);
+            margin-bottom: 20px;
             display: block;
             color: #fff;
             text-shadow: 0 0 10px var(--hacker-purple);
@@ -152,11 +156,11 @@
         .tag-container {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 8px;
         }
 
         .tag {
-            font-size: 11px;
+            font-size: clamp(9px, 2.5vw, 11px);
             color: var(--hacker-text);
             border: 1px solid var(--hacker-border);
             padding: 4px 10px;
@@ -180,6 +184,13 @@
             50% { clip-path: inset(50% 0 10% 0); transform: translate(2px, -2px); }
             100% { clip-path: inset(0 0 0 0); transform: translate(0); }
         }
+
+        /* Ajustes Mobile Específicos */
+        @media (max-width: 480px) {
+            .container { clip-path: none; border-radius: 5px; }
+            .ficha { padding: 15px; }
+            body { padding: 10px; }
+        }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
 </head>
@@ -201,7 +212,7 @@
         </div>
 
         <div id="resultado" class="ficha">
-            <p style="text-align: center; color: var(--hacker-border); margin-top: 70px; letter-spacing: 3px;">AGUARDANDO...</p>
+            <p style="text-align: center; color: var(--hacker-border); margin-top: 50px; letter-spacing: 3px;">AGUARDANDO...</p>
         </div>
     </div>
 </div>
