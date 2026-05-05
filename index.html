@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>C.D.O.C. - HACKER TERMINAL</title>
+    <style>
+        :root {
+            /* Paleta Roxa Hacker */
+            --hacker-purple: #bc13fe;
+            --hacker-glow: #9d00ff;
+            --hacker-cyan: #00f2ff;
+            --hacker-bg: #030005;
+            --hacker-card: #0a0112;
+            --hacker-text: #e5d1f2;
+            --hacker-border: #2d004d;
+            --glow-filter: drop-shadow(0 0 8px var(--hacker-glow));
+        }
+
+        body {
+            background-color: var(--hacker-bg);
+            color: var(--hacker-text);
+            font-family: 'Share Tech Mono', 'Consolas', monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* Scanlines mais sutis e azuladas */
+        body::after {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: repeating-linear-gradient(0deg, rgba(0,0,0,0.2), rgba(0,0,0,0.2) 1px, transparent 1px, transparent 2px);
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .container {
+            background: var(--hacker-card);
+            border: 1px solid var(--hacker-border);
+            width: 550px;
+            position: relative;
+            padding: 2px;
+            clip-path: polygon(0 0, 93% 0, 100% 7%, 100% 100%, 7% 100%, 0 93%);
+            box-shadow: 0 0 30px rgba(157, 0, 255, 0.15);
+        }
+
+        .header {
+            background: #1a0033;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            letter-spacing: 3px;
+            border-bottom: 1px solid var(--hacker-purple);
+            color: var(--hacker-cyan);
+            text-shadow: 0 0 5px var(--hacker-cyan);
+        }
+
+        .status { display: flex; align-items: center; gap: 8px; }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            background: var(--hacker-cyan);
+            box-shadow: 0 0 10px var(--hacker-cyan);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .content { 
+            padding: 40px; 
+            background: radial-gradient(circle at center, #110022 0%, #030005 100%);
+        }
+
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            margin-bottom: 35px;
+        }
+
+        .btn-main {
+            background: transparent;
+            border: 1px solid var(--hacker-purple);
+            color: var(--hacker-purple);
+            padding: 18px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            transition: 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-main:hover {
+            background: var(--hacker-purple);
+            color: #fff;
+            box-shadow: 0 0 20px var(--hacker-glow);
+        }
+
+        .btn-sub {
+            background: transparent;
+            border: 1px solid rgba(0, 242, 255, 0.3);
+            color: var(--hacker-cyan);
+            padding: 10px;
+            cursor: pointer;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: 0.2s;
+        }
+
+        .btn-sub:hover {
+            border-color: var(--hacker-cyan);
+            background: rgba(0, 242, 255, 0.05);
+        }
+
+        .ficha {
+            border-left: 3px solid var(--hacker-purple);
+            padding: 25px;
+            background: rgba(45, 0, 77, 0.1);
+            position: relative;
+            min-height: 180px;
+        }
+
+        .label {
+            color: var(--hacker-cyan);
+            font-size: 10px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            letter-spacing: 2px;
+            opacity: 0.8;
+        }
+
+        .valor {
+            font-size: 22px;
+            margin-bottom: 22px;
+            display: block;
+            color: #fff;
+            text-shadow: 0 0 10px var(--hacker-purple);
+            font-weight: bold;
+        }
+
+        .tag-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .tag {
+            font-size: 11px;
+            color: var(--hacker-text);
+            border: 1px solid var(--hacker-border);
+            padding: 4px 10px;
+            background: rgba(188, 19, 254, 0.1);
+            border-radius: 2px;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(1.2); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .glitch {
+            animation: glitch 0.2s ease-in-out infinite;
+            filter: hue-rotate(90deg);
+        }
+
+        @keyframes glitch {
+            0% { clip-path: inset(10% 0 30% 0); transform: translate(-2px, 2px); }
+            50% { clip-path: inset(50% 0 10% 0); transform: translate(2px, -2px); }
+            100% { clip-path: inset(0 0 0 0); transform: translate(0); }
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div class="status">
+            <div class="dot"></div>
+            <span>SISTEMA V.E.S.T.Í.G.I.O.</span>
+        </div>
+        <span id="clock">00:00:00</span>
+    </div>
+    
+    <div class="content">
+        <div class="btn-group">
+            <button class="btn-main" onclick="processarDocumento()">BUSCAR DADOS</button>
+            <button class="btn-sub" onclick="rerrolarPoder()">Re-rolar Poder</button>
+        </div>
+
+        <div id="resultado" class="ficha">
+            <p style="text-align: center; color: var(--hacker-border); margin-top: 70px; letter-spacing: 3px;">AGUARDANDO...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+const origens = [
+    {nome:"Acadêmico", pericias:["Ciências","Investigação"], poder:"Saber é Poder"},
+    {nome:"Agente de Saúde", pericias:["Intuição","Medicina"], poder:"Técnica Medicinal"},
+    {nome:"Amnésico", pericias:["Escolha do Mestre","Escolha do Mestre"], poder:"Vislumbres do Passado"},
+    {nome:"Artista", pericias:["Artes","Enganação"], poder:"Magnum Opus"},
+    {nome:"Atleta", pericias:["Acrobacia","Atletismo"], poder:"110%"},
+    {nome:"Chef", pericias:["Fortitude","Profissão"], poder:"Ingrediente Secreto"},
+    {nome:"Criminoso", pericias:["Crime","Furtividade"], poder:"O Crime Compensa"},
+    {nome:"Cultista Arrependido", pericias:["Ocultismo","Religião"], poder:"Traços do Outro Lado"},
+    {nome:"Desgarrado", pericias:["Fortitude","Sobrevivência"], poder:"Calejado"},
+    {nome:"Engenheiro", pericias:["Profissão","Tecnologia"], poder:"Ferramenta Favorita"},
+    {nome:"Executivo", pericias:["Diplomacia","Profissão"], poder:"Processo Otimizado"},
+    {nome:"Investigador", pericias:["Investigação","Percepção"], poder:"Faro para Pistas"},
+    {nome:"Lutador", pericias:["Luta","Reflexos"], poder:"Mão Pesada"},
+    {nome:"Magnata", pericias:["Diplomacia","Pilotagem"], poder:"Patrocinador da Ordem"},
+    {nome:"Mercenário", pericias:["Iniciativa","Intimidação"], poder:"Posição de Combate"},
+    {nome:"Militar", pericias:["Pontaria","Tática"], poder:"Para Bellum"},
+    {nome:"Operário", pericias:["Fortitude","Profissão"], poder:"Ferramenta de Trabalho"},
+    {nome:"Policial", pericias:["Percepção","Pontaria"], poder:"Patrulha"},
+    {nome:"Religioso", pericias:["Religião","Vontade"], poder:"Acalentar"},
+    {nome:"Servidor Público", pericias:["Intuição","Vontade"], poder:"Espírito Cívico"},
+    {nome:"Teórico da Conspiração", pericias:["Investigação","Ocultismo"], poder:"Eu Já Sabia"},
+    {nome:"T.I.", pericias:["Investigação","Tecnologia"], poder:"Motor de Busca"},
+    {nome:"Trabalhador Rural", pericias:["Adestramento","Sobrevivência"], poder:"Desbravador"},
+    {nome:"Trambiqueiro", pericias:["Crime","Enganação"], poder:"Impostor"},
+    {nome:"Universitário", pericias:["Atualidades","Investigação"], poder:"Dedicação"},
+    {nome:"Vítima", pericias:["Reflexos","Vontade"], poder:"Cicatrizes Psicológicas"}
+];
+
+let baseAtual;
+let poderAtual;
+
+function processarDocumento() {
+    const ficha = document.getElementById("resultado");
+    ficha.classList.add("glitch");
+    
+    setTimeout(() => {
+        gerarDocumento();
+        ficha.classList.remove("glitch");
+    }, 400);
+}
+
+function gerarDocumento() {
+    baseAtual = origens[Math.floor(Math.random() * origens.length)];
+    sortearPoder();
+}
+
+function sortearPoder() {
+    if (!baseAtual) return;
+    do {
+        poderAtual = origens[Math.floor(Math.random() * origens.length)];
+    } while (poderAtual.nome === baseAtual.nome);
+    atualizarTela();
+}
+
+function rerrolarPoder() {
+    const ficha = document.getElementById("resultado");
+    ficha.classList.add("glitch");
+    setTimeout(() => {
+        if (!baseAtual) gerarDocumento();
+        else sortearPoder();
+        ficha.classList.remove("glitch");
+    }, 250);
+}
+
+function atualizarTela() {
+    const todasPericias = [...baseAtual.pericias, ...poderAtual.pericias];
+    const periciaHTML = todasPericias.map(p => `<span class="tag">${p}</span>`).join("");
+
+    document.getElementById("resultado").innerHTML = `
+        <div class="label">>> ORIGEM:</div>
+        <span class="valor">${baseAtual.nome.toUpperCase()}</span>
+
+        <div class="label">>> PODER DE ORIGEM [${poderAtual.nome.toUpperCase()}]:</div>
+        <span class="valor" style="color:var(--hacker-purple)">${poderAtual.poder}</span>
+
+        <div class="label">>> PERÍCIAS [ESCOLHA DUAS]:</div>
+        <div class="tag-container">${periciaHTML}</div>
+    `;
+}
+
+setInterval(() => {
+    const now = new Date();
+    document.getElementById('clock').innerText = now.toLocaleTimeString('pt-BR');
+}, 1000);
+</script>
+
+</body>
+</html>
