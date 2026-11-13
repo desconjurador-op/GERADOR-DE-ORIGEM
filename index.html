@@ -459,4 +459,47 @@ function renderLoop() {
     drawItemMask(pos, r, w, h);
     hctx.globalCompositeOperation = 'source-atop'; hctx.globalAlpha = HAND_DARK; hctx.drawImage(maskCv, 0, 0);
     hctx.globalCompositeOperation = 'destination-out'; hctx.globalAlpha = ITEM_SEE; hctx.drawImage(maskCv, 0, 0);
-    hctx
+    hctx.globalCompositeOperation = 'source-over'; hctx.globalAlpha = 1;
+  }
+  if (showSkel) for (const lm of found) {
+    drawConnectors(hctx, lm, HAND_CONNECTIONS, { color: '#00e5ff', lineWidth: 2 });
+    drawLandmarks(hctx, lm, { color: '#ff3d71', lineWidth: 1, radius: 2 });
+  }
+  for (const t of tips) {
+    hctx.beginPath(); hctx.arc(t.x, t.y, 6, 0, 7);
+    hctx.fillStyle = t.pinch ? '#ffd60a' : '#fff'; hctx.fill();
+  }
+
+  if (stage.classList.contains('vr')) {
+    rctx.drawImage(left, 0, 0);
+    hrctx.clearRect(0, 0, w, h); hrctx.drawImage(handL, 0, 0);
+  }
+  statusEl.textContent = (gyroOK ? 'Giroscópio ok' : 'Sem giroscópio') + ' · ' +
+    (found.length ? `${found.length} mão(s)${clicking ? ' · clique' : ''}` : 'sem mão');
+}
+
+/* ===== Botões ===== */
+$('btnStart').onclick = async () => { await enableGyro(); startCamera(); };
+$('btnCenter').onclick = recenter;
+$('btnFlip').onclick = () => {
+  facing = facing === 'environment' ? 'user' : 'environment';
+  if (stream) startCamera();
+};
+$('btnMirror').onclick = () => stage.classList.toggle('mirror');
+const tuneInfo = $('tuneInfo');
+const showTune = () => { tuneInfo.textContent = `FOV ${FOV_LONG}° · atraso ${Math.round((lagAuto ?? LAG_FALLBACK) + lagAdj)} ms`; };
+$('btnTune').onclick = () => { $('tune').classList.toggle('on'); showTune(); };
+$('fovM').onclick = () => { FOV_LONG = Math.max(40, FOV_LONG - 2); showTune(); };
+$('fovP').onclick = () => { FOV_LONG = Math.min(120, FOV_LONG + 2); showTune(); };
+$('lagM').onclick = () => { lagAdj -= 10; showTune(); };
+$('lagP').onclick = () => { lagAdj += 10; showTune(); };
+$('btnSkel').onclick = () => { showSkel = !showSkel; };
+$('btnVR').onclick = async () => {
+  stage.classList.toggle('vr'); document.body.classList.toggle('vr');
+  if (stage.classList.contains('vr') && document.documentElement.requestFullscreen) {
+    try { await document.documentElement.requestFullscreen(); } catch (e) {}
+  }
+};
+</script>
+</body>
+</html>
