@@ -21,6 +21,9 @@
   #status { margin-left: auto; font-size: 14px; background: #0008;
     padding: 6px 10px; border-radius: 8px; }
   .vr #status { display: none; }
+  #tune { display: none; width: 100%; gap: 8px; flex-wrap: wrap; align-items: center; }
+  #tune.on { display: flex; }
+  #tune span { background: #0008; padding: 6px 10px; border-radius: 8px; font-size: 14px; }
 
   #wins { position: fixed; inset: 0; display: flex; pointer-events: none; z-index: 2; }
   .win { flex: 1; min-width: 0; position: relative; display: none; overflow: hidden; }
@@ -30,7 +33,7 @@
   .vr #winR.show { display: block; }
   .frame { position: absolute; background: #fff; border-radius: 10px; overflow: hidden;
     pointer-events: auto; display: flex; flex-direction: column; transform-origin: center;
-    will-change: transform, left, top; }
+    width: 800px; height: 480px; left: 0; top: 0; will-change: transform; }
   .bar { display: flex; gap: 6px; padding: 6px; background: #222; }
   .bar input { flex: 1; min-width: 0; padding: 6px; border-radius: 6px; border: 0; }
   .bar button, .bar a { padding: 6px 10px; font-size: 13px; border-radius: 6px;
@@ -74,20 +77,32 @@
   <button id="btnMirror">Espelhar</button>
   <button id="btnSkel">Esqueleto</button>
   <button id="btnVR">Modo VR</button>
+  <button id="btnTune">Ajustes</button>
   <span id="status">Aguardando</span>
+  <div id="tune">
+    <button id="fovM">FOV −</button><button id="fovP">FOV +</button>
+    <button id="lagM">Atraso −</button><button id="lagP">Atraso +</button>
+    <span id="tuneInfo"></span>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js"></script>
 <script>
 /* ===== Ajustes ===== */
-const FOV_LONG = 65;      // campo de visão (graus) do lado maior da câmera
-const VIDEO_LAG = 90;     // atraso (ms) do vídeo em relação ao giroscópio. Aumente se os itens "correm na frente" do fundo
+let FOV_LONG = 65;        // campo de visão (graus) do lado maior da câmera (ajustável pelo botão Ajustes)
+let lagAdj = 20;          // ajuste manual (ms) somado ao atraso medido da câmera
+const LAG_FALLBACK = 70;  // atraso usado se o navegador não informar o atraso real
+const HAND_DARK = 0.5;    // quanto a mão escurece ao tocar num item
+const ITEM_SEE = 0.5;     // quanto o item fica transparente onde a mão toca
 const TB_PITCH = -15;     // altura da barra de tarefas (graus abaixo do centro)
 const WIN_PITCH = 4;      // altura do centro da janela
 const WIN_HALF_W = 20;    // meia-largura da janela (graus)
 const ICON_GAP = 3.2;     // distância dos ícones ao centro (graus)
 const MASK_WIDTH = 0.24;  // espessura do recorte da mão (menor = mais justo)
+const STILL_CUTOFF = 0.5; // Hz: menor = item mais travado quando parado (mais lento a "assentar")
+const SPEED_BETA = 0.09;  // maior = acompanha mais rápido quando você gira
+const DEADZONE_DEG = 0.25;// tremor menor que isso (graus) é ignorado quando parado
 
 const $ = id => document.getElementById(id);
 const video = $('video'), left = $('left'), right = $('right');
@@ -100,7 +115,7 @@ const frameL = $('frameL'), frameR = $('frameR'), urlInput = $('url'), btnTab = 
 
 let facing = 'environment', stream = null, started = false;
 let browserOpen = false, lastClick = 0, showSkel = false;
-let lastHands = [];
+let lastHands = [], lagAuto = null, rvfcOn = false;
 
 /* ===== Giroscópio (quaternions + histórico para compensar o atraso do vídeo) ===== */
 const rad = d => d * Math.PI / 180;
@@ -132,6 +147,7 @@ function qToR(q) {
 }
 let gyroOK = false, gyroAdded = false, anchor = null, curR = qToR(eulerToQ(0, 90, 0));
 let hist = [];                         // [{t, q}]
+let prevTarget = eulerToQ(0, 90, 0), speedDeg = 0, lastPoseT = performance.now();
 let qShown = eulerToQ(0, 90, 0);       // padrão: celular em pé olhando para o horizonte
 
 function pushOrientation(e) {
@@ -142,7 +158,7 @@ function pushOrientation(e) {
 }
 function updatePose(snap) {
   if (!hist.length) { curR = qToR(qShown); return; }
-  const T = performance.now() - VIDEO_LAG;
+  const T = performance.now() - ((lagAuto ?? LAG_FALLBACK) + lagAdj);
   let target = hist[0].q;
   for (let i = hist.length - 1; i >= 0; i--) {
     if (hist[i].t <= T) {
@@ -151,7 +167,23 @@ function updatePose(snap) {
       break;
     }
   }
-  qShown = snap ? target : nlerp(qShown, target, 0.6);   // suavização leve
+  const now = performance.now();
+  if (snap) { qShown = target; prevTarget = target; speedDeg = 0; lastPoseT = now; }
+  else {
+    // Filtro "One Euro": parado = muito suave (item travado no lugar); girando = quase sem atraso
+    const dt = Math.max(0.004, Math.min(0.1, (now - lastPoseT) / 1000));
+    lastPoseT = now;
+    const angOf = (p, q) => 2 * Math.acos(Math.min(1, Math.abs(p.w*q.w + p.x*q.x + p.y*q.y + p.z*q.z)));
+    const rawSpeed = (angOf(prevTarget, target) * 180 / Math.PI) / dt;   // graus/s do sensor
+    prevTarget = target;
+    speedDeg += (rawSpeed - speedDeg) * 0.15;                            // velocidade já suavizada
+    const cutoff = STILL_CUTOFF + SPEED_BETA * speedDeg;                 // Hz
+    let alpha = 1 / (1 + (1 / (2 * Math.PI * cutoff)) / dt);
+    // zona morta: diferença minúscula em relação ao que já aparece é ignorada (some o tremor residual)
+    const err = angOf(qShown, target) * 180 / Math.PI;
+    if (err < DEADZONE_DEG && speedDeg < 4) alpha *= err / DEADZONE_DEG;
+    qShown = nlerp(qShown, target, alpha);
+  }
   curR = qToR(qShown);
 }
 function screenAngle() {
@@ -237,11 +269,8 @@ function placeFrame(win, fr) {
   let dx = ee.x - cc.x, dy = ee.y - cc.y;
   const hw = Math.hypot(dx, dy);
   if (dx < 0) { dx = -dx; dy = -dy; }
-  fr.style.width = (2 * hw) + 'px';
-  fr.style.height = (2 * hw * 0.6) + 'px';
-  fr.style.left = (cc.x - hw) + 'px';
-  fr.style.top = (cc.y - hw * 0.6) + 'px';
-  fr.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+  const sc = (2 * hw) / 800;
+  fr.style.transform = `translate3d(${cc.x - 400}px, ${cc.y - 240}px, 0) rotate(${Math.atan2(dy, dx)}rad) scale(${sc})`;
 }
 
 /* ===== Barra de tarefas ===== */
@@ -295,6 +324,33 @@ function press(id) {
   if (id === 'close') closeBrowser();
 }
 
+/* ===== Máscara dos itens (barra e janela) para o efeito de toque ===== */
+const maskCv = document.createElement('canvas'), mctx = maskCv.getContext('2d');
+function rrect(c, bw, bh, k) {
+  c.beginPath(); c.moveTo(-bw/2 + k, -bh/2);
+  c.arcTo(bw/2, -bh/2, bw/2, bh/2, k); c.arcTo(bw/2, bh/2, -bw/2, bh/2, k);
+  c.arcTo(-bw/2, bh/2, -bw/2, -bh/2, k); c.arcTo(-bw/2, -bh/2, bw/2, -bh/2, k);
+  c.closePath();
+}
+function drawItemMask(pos, r, w, h) {
+  mctx.clearRect(0, 0, w, h); mctx.fillStyle = '#000';
+  if (pos[0].ok && pos[1].ok) {
+    const bw = Math.hypot(pos[1].x - pos[0].x, pos[1].y - pos[0].y) + r * 3.2, bh = r * 2.7;
+    mctx.save();
+    mctx.translate((pos[0].x + pos[1].x) / 2, (pos[0].y + pos[1].y) / 2);
+    mctx.rotate(Math.atan2(pos[1].y - pos[0].y, pos[1].x - pos[0].x));
+    rrect(mctx, bw, bh, bh / 3); mctx.fill(); mctx.restore();
+  }
+  if (browserOpen) {
+    const c = proj(dirAt(0, WIN_PITCH)), e = proj(dirAt(WIN_HALF_W, WIN_PITCH));
+    if (c.ok && e.ok) {
+      const hw = Math.hypot(e.x - c.x, e.y - c.y);
+      mctx.save(); mctx.translate(c.x, c.y); mctx.rotate(Math.atan2(e.y - c.y, e.x - c.x));
+      rrect(mctx, hw * 2, hw * 1.2, 10); mctx.fill(); mctx.restore();
+    }
+  }
+}
+
 /* ===== Mão por cima: recorta a mão do vídeo atual ===== */
 function drawHandCutout(hands, w, h) {
   hctx.clearRect(0, 0, w, h);
@@ -342,7 +398,18 @@ async function startCamera() {
   }
   video.srcObject = stream;
   await video.play();
-  for (const c of [left, right, handL, handR]) { c.width = video.videoWidth; c.height = video.videoHeight; }
+  if (!rvfcOn && 'requestVideoFrameCallback' in video) {   // mede o atraso real da câmera
+    rvfcOn = true;
+    const cb = (now, meta) => {
+      if (meta.captureTime) {
+        const l = now - meta.captureTime;
+        if (l > 0 && l < 400) lagAuto = lagAuto == null ? l : lagAuto * 0.9 + l * 0.1;
+      }
+      video.requestVideoFrameCallback(cb);
+    };
+    video.requestVideoFrameCallback(cb);
+  }
+  for (const c of [left, right, handL, handR, maskCv]) { c.width = video.videoWidth; c.height = video.videoHeight; }
   recenter();
   statusEl.textContent = 'Câmera ligada';
   if (!started) { started = true; inferLoop(); renderLoop(); }
@@ -388,38 +455,8 @@ function renderLoop() {
   placeFrame(winR, fR);
 
   drawHandCutout(found, w, h);
-  if (showSkel) for (const lm of found) {
-    drawConnectors(hctx, lm, HAND_CONNECTIONS, { color: '#00e5ff', lineWidth: 2 });
-    drawLandmarks(hctx, lm, { color: '#ff3d71', lineWidth: 1, radius: 2 });
-  }
-  for (const t of tips) {
-    hctx.beginPath(); hctx.arc(t.x, t.y, 6, 0, 7);
-    hctx.fillStyle = t.pinch ? '#ffd60a' : '#fff'; hctx.fill();
-  }
-
-  if (stage.classList.contains('vr')) {
-    rctx.drawImage(left, 0, 0);
-    hrctx.clearRect(0, 0, w, h); hrctx.drawImage(handL, 0, 0);
-  }
-  statusEl.textContent = (gyroOK ? 'Giroscópio ok' : 'Sem giroscópio') + ' · ' +
-    (found.length ? `${found.length} mão(s)${clicking ? ' · clique' : ''}` : 'sem mão');
-}
-
-/* ===== Botões ===== */
-$('btnStart').onclick = async () => { await enableGyro(); startCamera(); };
-$('btnCenter').onclick = recenter;
-$('btnFlip').onclick = () => {
-  facing = facing === 'environment' ? 'user' : 'environment';
-  if (stream) startCamera();
-};
-$('btnMirror').onclick = () => stage.classList.toggle('mirror');
-$('btnSkel').onclick = () => { showSkel = !showSkel; };
-$('btnVR').onclick = async () => {
-  stage.classList.toggle('vr'); document.body.classList.toggle('vr');
-  if (stage.classList.contains('vr') && document.documentElement.requestFullscreen) {
-    try { await document.documentElement.requestFullscreen(); } catch (e) {}
-  }
-};
-</script>
-</body>
-</html>
+  if (found.length) {   // onde a mão encosta num item: a mão escurece e o item aparece através dela
+    drawItemMask(pos, r, w, h);
+    hctx.globalCompositeOperation = 'source-atop'; hctx.globalAlpha = HAND_DARK; hctx.drawImage(maskCv, 0, 0);
+    hctx.globalCompositeOperation = 'destination-out'; hctx.globalAlpha = ITEM_SEE; hctx.drawImage(maskCv, 0, 0);
+    hctx
