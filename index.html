@@ -39,6 +39,7 @@
   .bar button, .bar a { padding: 6px 10px; font-size: 13px; border-radius: 6px;
     background: #fff; color: #000; text-decoration: none; }
   iframe { flex: 1; border: 0; width: 100%; }
+  .frame.grab { box-shadow: 0 0 0 8px #ffd60a; }
 </style>
 </head>
 <body>
@@ -73,6 +74,7 @@
 <div id="ui">
   <button id="btnStart">Ligar câmera</button>
   <button id="btnCenter">Recentralizar</button>
+  <button id="btnReset">Resetar itens</button>
   <button id="btnFlip">Trocar câmera</button>
   <button id="btnMirror">Espelhar</button>
   <button id="btnSkel">Esqueleto</button>
@@ -262,7 +264,7 @@ function toCss(win, x, y) {
 }
 function placeFrame(win, fr) {
   if (!win.classList.contains('show')) return;
-  const c = proj(dirAt(0, WIN_PITCH)), e = proj(dirAt(WIN_HALF_W, WIN_PITCH));
+  const c = proj(dirAt(winPos.yaw, winPos.pitch)), e = proj(dirAt(winPos.yaw + WIN_HALF_W, winPos.pitch));
   if (!c.ok || !e.ok) { win.classList.add('behind'); return; }
   win.classList.remove('behind');
   const cc = toCss(win, c.x, c.y), ee = toCss(win, e.x, e.y);
@@ -275,6 +277,76 @@ function placeFrame(win, fr) {
 
 /* ===== Barra de tarefas ===== */
 const icons = [ { id: 'chrome', dyaw: -ICON_GAP }, { id: 'close', dyaw: ICON_GAP } ];
+
+/* ===== Reposicionar itens: pinça (polegar + indicador) sobre a barra ou a janela e arraste ===== */
+const tbPos = { yaw: 0, pitch: TB_PITCH }, winPos = { yaw: 0, pitch: WIN_PITCH };   // graus, relativos ao centro
+let drag = null;
+const prevPinch = [];
+const POS_KEY = 'maosvr.pos';
+function savePos() {
+  try { localStorage.setItem(POS_KEY, JSON.stringify({ tb: tbPos, win: winPos })); } catch (e) {}
+}
+function loadPos() {
+  try {
+    const s = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+    if (s && s.tb && s.win) { Object.assign(tbPos, s.tb); Object.assign(winPos, s.win); }
+  } catch (e) {}
+}
+function resetPos() {
+  tbPos.yaw = 0; tbPos.pitch = TB_PITCH; winPos.yaw = 0; winPos.pitch = WIN_PITCH; savePos();
+}
+loadPos();
+
+// ponto da tela (pixels do vídeo) -> direção em graus relativa ao centro (inverso de proj)
+function angAt(x, y) {
+  const W = left.width, H = left.height, ax = camAxes(), R = curR;
+  const f = (Math.max(W, H) / 2) / Math.tan(rad(FOV_LONG / 2));
+  const a = (x - W / 2) / f, b = -(y - H / 2) / f;
+  const v = [0, 1, 2].map(i => ax.fwd[i] + ax.right[i] * a + ax.up[i] * b);
+  const wv = [R[0]*v[0] + R[1]*v[1] + R[2]*v[2],
+              R[3]*v[0] + R[4]*v[1] + R[5]*v[2],
+              R[6]*v[0] + R[7]*v[1] + R[8]*v[2]];
+  const n = Math.hypot(wv[0], wv[1], wv[2]) || 1;
+  let dy = Math.atan2(wv[0], wv[1]) - anchor.yaw;
+  dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  return { yaw: dy * 180 / Math.PI, pitch: (Math.asin(Math.max(-1, Math.min(1, wv[2] / n))) - anchor.pitch) * 180 / Math.PI };
+}
+function hitItem(pos, r, x, y) {
+  if (browserOpen) {   // janela primeiro (fica por cima)
+    const c = proj(dirAt(winPos.yaw, winPos.pitch)), e = proj(dirAt(winPos.yaw + WIN_HALF_W, winPos.pitch));
+    if (c.ok && e.ok) {
+      const hw = Math.hypot(e.x - c.x, e.y - c.y), ang = Math.atan2(e.y - c.y, e.x - c.x);
+      const dx = x - c.x, dy = y - c.y;
+      const lx = dx * Math.cos(ang) + dy * Math.sin(ang), ly = -dx * Math.sin(ang) + dy * Math.cos(ang);
+      if (Math.abs(lx) < hw && Math.abs(ly) < hw * 0.6) return 'win';
+    }
+  }
+  if (pos[0].ok && pos[1].ok) {
+    const mx = (pos[0].x + pos[1].x) / 2, my = (pos[0].y + pos[1].y) / 2;
+    const ang = Math.atan2(pos[1].y - pos[0].y, pos[1].x - pos[0].x);
+    const bw = Math.hypot(pos[1].x - pos[0].x, pos[1].y - pos[0].y) + r * 3.2, bh = r * 2.7;
+    const dx = x - mx, dy = y - my;
+    const lx = dx * Math.cos(ang) + dy * Math.sin(ang), ly = -dx * Math.sin(ang) + dy * Math.cos(ang);
+    if (Math.abs(lx) < bw / 2 && Math.abs(ly) < bh / 2) return 'tb';
+  }
+  return null;
+}
+function startDrag(it, hand, x, y) {
+  const item = it === 'win' ? winPos : tbPos, p = angAt(x, y);
+  drag = { it, hand, item, offY: p.yaw - item.yaw, offP: p.pitch - item.pitch, fy: p.yaw, fp: p.pitch, lastSeen: performance.now() };
+  if (it === 'win') { fL.classList.add('grab'); fR.classList.add('grab'); }
+}
+function moveDrag(x, y) {
+  const p = angAt(x, y);
+  drag.fy += (p.yaw - drag.fy) * 0.45;      // suaviza o tremor da mão enquanto arrasta
+  drag.fp += (p.pitch - drag.fp) * 0.45;
+  drag.item.yaw = drag.fy - drag.offY;
+  drag.item.pitch = Math.max(-60, Math.min(60, drag.fp - drag.offP));
+}
+function endDrag() {
+  fL.classList.remove('grab'); fR.classList.remove('grab');
+  drag = null; savePos();
+}
 
 function drawChrome(c, x, y, r) {
   const cols = ['#ea4335', '#fbbc05', '#34a853'];
@@ -292,7 +364,7 @@ function drawTaskbar(c, pos, r, hoverId) {
   const ang = Math.atan2(pos[1].y - pos[0].y, pos[1].x - pos[0].x);
   const bw = Math.hypot(pos[1].x - pos[0].x, pos[1].y - pos[0].y) + r * 3.2, bh = r * 2.7, k = bh / 3;
   c.save(); c.translate(mx, my); c.rotate(ang);
-  c.fillStyle = 'rgba(20,20,30,0.75)';
+  c.fillStyle = (drag && drag.it === 'tb') ? 'rgba(70,70,110,0.92)' : 'rgba(20,20,30,0.75)';
   c.beginPath();
   c.moveTo(-bw/2 + k, -bh/2);
   c.arcTo(bw/2, -bh/2, bw/2, bh/2, k); c.arcTo(bw/2, bh/2, -bw/2, bh/2, k);
@@ -342,7 +414,7 @@ function drawItemMask(pos, r, w, h) {
     rrect(mctx, bw, bh, bh / 3); mctx.fill(); mctx.restore();
   }
   if (browserOpen) {
-    const c = proj(dirAt(0, WIN_PITCH)), e = proj(dirAt(WIN_HALF_W, WIN_PITCH));
+    const c = proj(dirAt(winPos.yaw, winPos.pitch)), e = proj(dirAt(winPos.yaw + WIN_HALF_W, winPos.pitch));
     if (c.ok && e.ok) {
       const hw = Math.hypot(e.x - c.x, e.y - c.y);
       mctx.save(); mctx.translate(c.x, c.y); mctx.rotate(Math.atan2(e.y - c.y, e.x - c.x));
@@ -376,137 +448,4 @@ function drawHandCutout(hands, w, h) {
   hctx.globalCompositeOperation = 'source-over';
 }
 
-/* ===== Câmera ===== */
-async function startCamera() {
-  if (stream) stream.getTracks().forEach(t => t.stop());
-  if (!window.isSecureContext || !navigator.mediaDevices) {
-    statusEl.textContent = 'Página sem HTTPS (endereço: ' + location.protocol + '). Abra por um link https://';
-    return;
-  }
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: facing, width: { ideal: 854 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
-      audio: false });
-  } catch (e) {
-    const msgs = {
-      NotAllowedError: 'Permissão negada. Libere a câmera nas configurações do site/navegador.',
-      NotFoundError: 'Nenhuma câmera encontrada.',
-      NotReadableError: 'Câmera em uso por outro app. Feche os outros apps e tente de novo.',
-      OverconstrainedError: 'Essa câmera não está disponível. Toque em "Trocar câmera".' };
-    statusEl.textContent = msgs[e.name] || ('Erro: ' + e.name);
-    return;
-  }
-  video.srcObject = stream;
-  await video.play();
-  if (!rvfcOn && 'requestVideoFrameCallback' in video) {   // mede o atraso real da câmera
-    rvfcOn = true;
-    const cb = (now, meta) => {
-      if (meta.captureTime) {
-        const l = now - meta.captureTime;
-        if (l > 0 && l < 400) lagAuto = lagAuto == null ? l : lagAuto * 0.9 + l * 0.1;
-      }
-      video.requestVideoFrameCallback(cb);
-    };
-    video.requestVideoFrameCallback(cb);
-  }
-  for (const c of [left, right, handL, handR, maskCv]) { c.width = video.videoWidth; c.height = video.videoHeight; }
-  recenter();
-  statusEl.textContent = 'Câmera ligada';
-  if (!started) { started = true; inferLoop(); renderLoop(); }
-}
-
-/* ===== MediaPipe Hands: só guarda o resultado (roda no seu ritmo) ===== */
-// Se a biblioteca não carregar (internet/CDN bloqueado), o resto da página (botões) continua funcionando
-let hands = null;
-try {
-  hands = new Hands({
-    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}` });
-  hands.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
-  hands.onResults(r => { lastHands = r.multiHandLandmarks || []; });
-} catch (e) {
-  hands = null;
-  statusEl.textContent = 'Biblioteca de mãos não carregou (verifique a internet)';
-}
-
-async function inferLoop() {
-  if (hands && video.readyState >= 2) { try { await hands.send({ image: video }); } catch (e) {} }
-  requestAnimationFrame(inferLoop);
-}
-
-/* ===== Desenho: roda a cada quadro da tela, independente da detecção ===== */
-function renderLoop() {
-  requestAnimationFrame(renderLoop);
-  if (video.readyState < 2 || !anchor) return;
-  const w = left.width, h = left.height, found = lastHands;
-
-  updatePose(false);
-  lctx.drawImage(video, 0, 0, w, h);
-
-  const pos = icons.map(ic => proj(dirAt(ic.dyaw, TB_PITCH)));
-  const r = w * 0.03;
-  let hover = null, clicking = false;
-  const tips = [];
-  for (const lm of found) {
-    const a = lm[4], b = lm[8];
-    const pinch = Math.hypot((a.x - b.x) * w, (a.y - b.y) * h) / w < 0.05;
-    tips.push({ x: b.x * w, y: b.y * h, pinch });
-    icons.forEach((ic, i) => {
-      if (pos[i].ok && Math.hypot(b.x * w - pos[i].x, b.y * h - pos[i].y) < r * 1.4) {
-        hover = ic.id;
-        if (pinch) { clicking = true; press(ic.id); }
-      }
-    });
-  }
-  drawTaskbar(lctx, pos, r, hover);
-  placeFrame(winL, fL);
-  placeFrame(winR, fR);
-
-  drawHandCutout(found, w, h);
-  if (found.length) {   // onde a mão encosta num item: a mão escurece e o item aparece através dela
-    drawItemMask(pos, r, w, h);
-    hctx.globalCompositeOperation = 'source-atop'; hctx.globalAlpha = HAND_DARK; hctx.drawImage(maskCv, 0, 0);
-    hctx.globalCompositeOperation = 'destination-out'; hctx.globalAlpha = ITEM_SEE; hctx.drawImage(maskCv, 0, 0);
-    hctx.globalCompositeOperation = 'source-over'; hctx.globalAlpha = 1;
-  }
-  if (showSkel) for (const lm of found) {
-    drawConnectors(hctx, lm, HAND_CONNECTIONS, { color: '#00e5ff', lineWidth: 2 });
-    drawLandmarks(hctx, lm, { color: '#ff3d71', lineWidth: 1, radius: 2 });
-  }
-  for (const t of tips) {
-    hctx.beginPath(); hctx.arc(t.x, t.y, 6, 0, 7);
-    hctx.fillStyle = t.pinch ? '#ffd60a' : '#fff'; hctx.fill();
-  }
-
-  if (stage.classList.contains('vr')) {
-    rctx.drawImage(left, 0, 0);
-    hrctx.clearRect(0, 0, w, h); hrctx.drawImage(handL, 0, 0);
-  }
-  statusEl.textContent = (gyroOK ? 'Giroscópio ok' : 'Sem giroscópio') + ' · ' +
-    (found.length ? `${found.length} mão(s)${clicking ? ' · clique' : ''}` : 'sem mão');
-}
-
-/* ===== Botões ===== */
-$('btnStart').onclick = async () => { await enableGyro(); startCamera(); };
-$('btnCenter').onclick = recenter;
-$('btnFlip').onclick = () => {
-  facing = facing === 'environment' ? 'user' : 'environment';
-  if (stream) startCamera();
-};
-$('btnMirror').onclick = () => stage.classList.toggle('mirror');
-const tuneInfo = $('tuneInfo');
-const showTune = () => { tuneInfo.textContent = `FOV ${FOV_LONG}° · atraso ${Math.round((lagAuto ?? LAG_FALLBACK) + lagAdj)} ms`; };
-$('btnTune').onclick = () => { $('tune').classList.toggle('on'); showTune(); };
-$('fovM').onclick = () => { FOV_LONG = Math.max(40, FOV_LONG - 2); showTune(); };
-$('fovP').onclick = () => { FOV_LONG = Math.min(120, FOV_LONG + 2); showTune(); };
-$('lagM').onclick = () => { lagAdj -= 10; showTune(); };
-$('lagP').onclick = () => { lagAdj += 10; showTune(); };
-$('btnSkel').onclick = () => { showSkel = !showSkel; };
-$('btnVR').onclick = async () => {
-  stage.classList.toggle('vr'); document.body.classList.toggle('vr');
-  if (stage.classList.contains('vr') && document.documentElement.requestFullscreen) {
-    try { await document.documentElement.requestFullscreen(); } catch (e) {}
-  }
-};
-</script>
-</body>
-</html>
+/* ===== Câme
