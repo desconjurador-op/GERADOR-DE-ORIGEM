@@ -416,13 +416,20 @@ async function startCamera() {
 }
 
 /* ===== MediaPipe Hands: só guarda o resultado (roda no seu ritmo) ===== */
-const hands = new Hands({
-  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}` });
-hands.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
-hands.onResults(r => { lastHands = r.multiHandLandmarks || []; });
+// Se a biblioteca não carregar (internet/CDN bloqueado), o resto da página (botões) continua funcionando
+let hands = null;
+try {
+  hands = new Hands({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}` });
+  hands.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+  hands.onResults(r => { lastHands = r.multiHandLandmarks || []; });
+} catch (e) {
+  hands = null;
+  statusEl.textContent = 'Biblioteca de mãos não carregou (verifique a internet)';
+}
 
 async function inferLoop() {
-  if (video.readyState >= 2) { try { await hands.send({ image: video }); } catch (e) {} }
+  if (hands && video.readyState >= 2) { try { await hands.send({ image: video }); } catch (e) {} }
   requestAnimationFrame(inferLoop);
 }
 
