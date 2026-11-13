@@ -14,12 +14,27 @@
   .mirror canvas { transform: scaleX(-1); }
   video { display: none; }
   #ui { position: fixed; top: 0; left: 0; right: 0; display: flex; gap: 8px;
-    padding: 12px; align-items: center; z-index: 2; }
+    padding: 12px; align-items: center; z-index: 3; }
   button { font: inherit; padding: 10px 14px; border: 0; border-radius: 10px;
     background: #fff; color: #000; }
   #status { margin-left: auto; font-size: 14px; background: #0008;
     padding: 6px 10px; border-radius: 8px; }
   .vr #status { display: none; }
+
+  /* Janela do "navegador" */
+  #wins { position: fixed; inset: 0; display: flex; pointer-events: none; z-index: 2; }
+  .win { flex: 1; min-width: 0; position: relative; display: none; }
+  .win.show { display: block; }
+  #winR.show { display: none; }
+  .vr #winR.show { display: block; }
+  .frame { position: absolute; left: 8%; right: 8%; top: 16%; bottom: 24%;
+    background: #fff; border-radius: 10px; overflow: hidden; pointer-events: auto;
+    display: flex; flex-direction: column; }
+  .bar { display: flex; gap: 6px; padding: 6px; background: #222; }
+  .bar input { flex: 1; min-width: 0; padding: 6px; border-radius: 6px; border: 0; }
+  .bar button, .bar a { padding: 6px 10px; font-size: 13px; border-radius: 6px;
+    background: #fff; color: #000; text-decoration: none; }
+  iframe { flex: 1; border: 0; width: 100%; }
 </style>
 </head>
 <body>
@@ -28,9 +43,27 @@
   <canvas id="left"></canvas>
   <canvas id="right"></canvas>
 </div>
+
+<div id="wins">
+  <div class="win" id="winL">
+    <div class="frame">
+      <div class="bar">
+        <input id="url" value="https://pt.wikipedia.org">
+        <button id="btnGo">Ir</button>
+        <a id="btnTab" target="_blank" rel="noopener" href="#">Nova aba</a>
+      </div>
+      <iframe id="frameL"></iframe>
+    </div>
+  </div>
+  <div class="win" id="winR">
+    <div class="frame"><iframe id="frameR"></iframe></div>
+  </div>
+</div>
+
 <div id="ui">
   <button id="btnStart">Ligar câmera</button>
   <button id="btnFlip">Trocar câmera</button>
+  <button id="btnMirror">Espelhar</button>
   <button id="btnVR">Modo VR</button>
   <span id="status">Aguardando</span>
 </div>
@@ -45,14 +78,98 @@ const lctx = left.getContext('2d');
 const rctx = right.getContext('2d');
 const stage = document.getElementById('stage');
 const statusEl = document.getElementById('status');
+const winL = document.getElementById('winL');
+const winR = document.getElementById('winR');
+const frameL = document.getElementById('frameL');
+const frameR = document.getElementById('frameR');
+const urlInput = document.getElementById('url');
+const btnTab = document.getElementById('btnTab');
 
-let facing = 'environment';   // câmera traseira
+let facing = 'environment';
 let stream = null;
 let looping = false;
+let browserOpen = false;
+let lastClick = 0;
 
-// Bola virtual que você pode pegar com o gesto de pinça
-const ball = { x: 0.5, y: 0.5, r: 0.07, held: false };
+// ---------- Barra de tarefas (coordenadas de 0 a 1) ----------
+const TASKBAR = { y: 0.9, size: 0.06 };
+const icons = [
+  { id: 'chrome', x: 0.46 },
+  { id: 'close',  x: 0.54 }
+];
 
+function drawChrome(c, x, y, r) {
+  const cols = ['#ea4335', '#fbbc05', '#34a853'];
+  for (let i = 0; i < 3; i++) {
+    c.beginPath(); c.moveTo(x, y);
+    c.arc(x, y, r, -Math.PI / 2 + i * 2 * Math.PI / 3, -Math.PI / 2 + (i + 1) * 2 * Math.PI / 3);
+    c.closePath(); c.fillStyle = cols[i]; c.fill();
+  }
+  c.beginPath(); c.arc(x, y, r * 0.5, 0, 7); c.fillStyle = '#fff'; c.fill();
+  c.beginPath(); c.arc(x, y, r * 0.38, 0, 7); c.fillStyle = '#4285f4'; c.fill();
+}
+
+function drawTaskbar(c, w, h, hoverId) {
+  const bw = w * 0.26, bh = w * 0.09;
+  const bx = w * 0.5 - bw / 2, by = h * TASKBAR.y - bh / 2;
+  c.fillStyle = 'rgba(20,20,30,0.75)';
+  c.beginPath(); c.roundRect(bx, by, bw, bh, bh / 3); c.fill();
+  for (const ic of icons) {
+    const cx = ic.x * w, cy = h * TASKBAR.y, r = w * TASKBAR.size / 2;
+    if (ic.id === 'close' && !browserOpen) c.globalAlpha = 0.3;
+    if (hoverId === ic.id) {
+      c.fillStyle = 'rgba(255,255,255,0.3)';
+      c.beginPath(); c.arc(cx, cy, r * 1.3, 0, 7); c.fill();
+    }
+    if (ic.id === 'chrome') drawChrome(c, cx, cy, r);
+    else {
+      c.strokeStyle = '#fff'; c.lineWidth = 4; c.lineCap = 'round';
+      c.beginPath();
+      c.moveTo(cx - r * .5, cy - r * .5); c.lineTo(cx + r * .5, cy + r * .5);
+      c.moveTo(cx + r * .5, cy - r * .5); c.lineTo(cx - r * .5, cy + r * .5);
+      c.stroke();
+    }
+    c.globalAlpha = 1;
+  }
+}
+
+function iconAt(px, py, w, h) {
+  for (const ic of icons) {
+    const d = Math.hypot((px - ic.x) * w, (py - TASKBAR.y) * h);
+    if (d < w * TASKBAR.size * 0.7) return ic.id;
+  }
+  return null;
+}
+
+// ---------- Navegador dentro da tela ----------
+function go(u) {
+  u = (u || '').trim();
+  if (!u) return;
+  if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+  frameL.src = u; frameR.src = u;
+  urlInput.value = u; btnTab.href = u;
+}
+function openBrowser() {
+  browserOpen = true;
+  winL.classList.add('show'); winR.classList.add('show');
+  if (!frameL.src || frameL.src === 'about:blank' || frameL.src === location.href) go(urlInput.value);
+}
+function closeBrowser() {
+  browserOpen = false;
+  winL.classList.remove('show'); winR.classList.remove('show');
+}
+document.getElementById('btnGo').onclick = () => go(urlInput.value);
+urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') go(urlInput.value); });
+
+function press(id) {
+  const now = Date.now();
+  if (now - lastClick < 800) return;     // evita cliques repetidos
+  lastClick = now;
+  if (id === 'chrome') openBrowser();
+  if (id === 'close') closeBrowser();
+}
+
+// ---------- Câmera ----------
 async function startCamera() {
   if (stream) stream.getTracks().forEach(t => t.stop());
   if (!window.isSecureContext || !navigator.mediaDevices) {
@@ -78,18 +195,17 @@ async function startCamera() {
   await video.play();
   left.width = right.width = video.videoWidth;
   left.height = right.height = video.videoHeight;
-  stage.classList.toggle('mirror', facing === 'user');
   statusEl.textContent = 'Câmera ligada';
   if (!looping) { looping = true; loop(); }
 }
 
-// Configuração do MediaPipe Hands
+// ---------- MediaPipe Hands ----------
 const hands = new Hands({
   locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}`
 });
 hands.setOptions({
   maxNumHands: 2,
-  modelComplexity: 0,           // 0 = mais leve, melhor para celular
+  modelComplexity: 0,
   minDetectionConfidence: 0.6,
   minTrackingConfidence: 0.5
 });
@@ -105,48 +221,42 @@ function onResults(results) {
   lctx.save();
   lctx.drawImage(video, 0, 0, w, h);
 
-  let pinching = false;
   const found = results.multiHandLandmarks || [];
+  let hover = null, clicking = false;
 
   for (const lm of found) {
     drawConnectors(lctx, lm, HAND_CONNECTIONS, { color: '#00e5ff', lineWidth: 3 });
     drawLandmarks(lctx, lm, { color: '#ff3d71', lineWidth: 1, radius: 3 });
 
-    // Gesto de pinça: distância entre a ponta do polegar (4) e do indicador (8)
+    // Ponteiro = ponta do indicador (ponto 8); clique = pinça com o polegar (ponto 4)
     const a = lm[4], b = lm[8];
-    const dist = Math.hypot((a.x - b.x) * w, (a.y - b.y) * h) / w;
-    if (dist < 0.05) {
-      const px = (a.x + b.x) / 2, py = (a.y + b.y) / 2;
-      const nearBall = Math.hypot((px - ball.x) * w, (py - ball.y) * h) / w < ball.r * 1.5;
-      if (ball.held || nearBall) {
-        ball.held = true;
-        ball.x = px; ball.y = py;
-      }
-      pinching = true;
-    }
-  }
-  if (!pinching) ball.held = false;
+    const over = iconAt(b.x, b.y, w, h);
+    const pinch = Math.hypot((a.x - b.x) * w, (a.y - b.y) * h) / w < 0.05;
+    if (over) { hover = over; if (pinch) { clicking = true; press(over); } }
 
-  // Desenha a bola
-  lctx.beginPath();
-  lctx.arc(ball.x * w, ball.y * h, ball.r * w, 0, Math.PI * 2);
-  lctx.fillStyle = ball.held ? '#ffd60a' : '#7c4dff';
-  lctx.fill();
+    lctx.beginPath();
+    lctx.arc(b.x * w, b.y * h, 8, 0, 7);
+    lctx.fillStyle = pinch ? '#ffd60a' : '#fff';
+    lctx.fill();
+  }
+
+  drawTaskbar(lctx, w, h, hover);
   lctx.restore();
 
-  // Copia a imagem para o segundo olho (modo VR)
   if (stage.classList.contains('vr')) rctx.drawImage(left, 0, 0);
 
   statusEl.textContent = found.length
-    ? `${found.length} mão(s)${pinching ? ' · pinça' : ''}`
+    ? `${found.length} mão(s)${clicking ? ' · clique' : ''}`
     : 'Nenhuma mão detectada';
 }
 
+// ---------- Botões ----------
 document.getElementById('btnStart').onclick = startCamera;
 document.getElementById('btnFlip').onclick = () => {
   facing = facing === 'environment' ? 'user' : 'environment';
   if (stream) startCamera();
 };
+document.getElementById('btnMirror').onclick = () => stage.classList.toggle('mirror');
 document.getElementById('btnVR').onclick = async () => {
   stage.classList.toggle('vr');
   document.body.classList.toggle('vr');
@@ -156,4 +266,4 @@ document.getElementById('btnVR').onclick = async () => {
 };
 </script>
 </body>
-</html>
+  </html>
