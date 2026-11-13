@@ -113,7 +113,15 @@ function drawTaskbar(c, w, h, hoverId) {
   const bw = w * 0.26, bh = w * 0.09;
   const bx = w * 0.5 - bw / 2, by = h * TASKBAR.y - bh / 2;
   c.fillStyle = 'rgba(20,20,30,0.75)';
-  c.beginPath(); c.roundRect(bx, by, bw, bh, bh / 3); c.fill();
+  const r0 = bh / 3;
+  c.beginPath();
+  c.moveTo(bx + r0, by);
+  c.arcTo(bx + bw, by, bx + bw, by + bh, r0);
+  c.arcTo(bx + bw, by + bh, bx, by + bh, r0);
+  c.arcTo(bx, by + bh, bx, by, r0);
+  c.arcTo(bx, by, bx + bw, by, r0);
+  c.closePath();
+  c.fill();
   for (const ic of icons) {
     const cx = ic.x * w, cy = h * TASKBAR.y, r = w * TASKBAR.size / 2;
     if (ic.id === 'close' && !browserOpen) c.globalAlpha = 0.3;
@@ -240,7 +248,8 @@ function onResults(results) {
     lctx.fill();
   }
 
-  drawTaskbar(lctx, w, h, hover);
+  try { drawTaskbar(lctx, w, h, hover); }
+  catch (e) { statusEl.textContent = 'Erro na barra: ' + e.message; }
   lctx.restore();
 
   if (stage.classList.contains('vr')) rctx.drawImage(left, 0, 0);
@@ -266,4 +275,4 @@ document.getElementById('btnVR').onclick = async () => {
 };
 </script>
 </body>
-  </html>
+</html>
